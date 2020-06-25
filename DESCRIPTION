@@ -1,0 +1,17 @@
+Package: voicegravy
+Type: Package
+Title: voicegravy is an atempt to port voicesauce to R
+Version: 0.1.0
+Authors@R: c(
+    person("Raphael", "Winkelmann", , "raphael@phonetik.uni-muenchen.de", c("aut", "cre")),
+    person("James", "Kirby", , "j.kirby@ed.ac.uk", c("aut", "ctb")))
+Maintainer: Raphael Winkelmann <raphael@phonetik.uni-muenchen.de>
+Description: voicegravy provides automated voice measurements over time from audio recordings.
+    Inputs are standard wave (*.wav) files.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    wrassp(>= 0.1.9),
+    tibble(>= 3.0.1)
+RoxygenNote: 7.1.0

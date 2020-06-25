@@ -1,0 +1,14 @@
+.Rproj.user
+.Rhistory
+.RData
+
+*.log
+*.gz
+*.fdb_latexmk
+
+*.o
+
+*.so
+
+.DS_Store
+
