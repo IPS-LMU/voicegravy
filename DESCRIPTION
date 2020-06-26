@@ -1,6 +1,6 @@
 Package: voicegravy
 Type: Package
-Title: voicegravy is an atempt to port voicesauce to R
+Title: voicegravy is an attempt to port voicesauce to R
 Version: 0.1.0
 Authors@R: c(
     person("Raphael", "Winkelmann", , "raphael@phonetik.uni-muenchen.de", c("aut", "cre")),
