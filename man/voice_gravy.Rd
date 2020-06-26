@@ -23,13 +23,15 @@ function.
 object of type specified with \code{result_type}
 }
 \description{
-Bit longer info
+An attempt of reimplementation of http://www.phonetics.ucla.edu/voicesauce/
+using R packages
 }
 \details{
-the measures currently computed are:
+The measures currently computed are:
 \itemize{
 \item F0
 \item Formants F1-F4
+\item Formant bandwidths B1-B4
 \item H1(*)
 \item H2(*)
 \item H4(*)
