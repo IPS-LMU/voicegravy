@@ -54,6 +54,7 @@ voice_gravy <- function(wav_path,
 
   f0_vals <- wrassp::ksvF0(wav_path, toFile = F)
   formant_vals <- wrassp::forest(wav_path, toFile = F)
+  # JPK: option to include Praat formants/bandwidths?
   spectral_vals <- wrassp::dftSpectrum(wav_path, toFile = F)
 
   # check if all have the same sample rate and start time
@@ -73,21 +74,29 @@ voice_gravy <- function(wav_path,
   # as we know the size of the resulting object
   # we can pre-allocate it and then fill it up
   # (expand as needed)
+  # JK: add Hawks & Miller bandwidth option eventually?
   result_tbl = tibble::tibble(frame_time = frame_time,
-                              F1 = formant_vals$fm[1],
-                              F2 = formant_vals$fm[2],
-                              F3 = formant_vals$fm[3],
-                              F4 = formant_vals$fm[4],
-                              B1 = formant_vals$bw[1],
-                              B2 = formant_vals$bw[2],
-                              B3 = formant_vals$bw[3],
-                              B4 = formant_vals$bw[4],
-                              H1 = numeric(nrow(formant_vals$fm)),
-                              H2 = numeric(nrow(formant_vals$fm)),
-                              H4 = numeric(nrow(formant_vals$fm)),
-                              A1 = numeric(nrow(formant_vals$fm)),
-                              A2 = numeric(nrow(formant_vals$fm)),
-                              A3 = numeric(nrow(formant_vals$fm)),
+                              F0 = f0_vals$F0[,1],
+                              F1 = formant_vals$fm[,1],
+                              F2 = formant_vals$fm[,2],
+                              F3 = formant_vals$fm[,3],
+                              F4 = formant_vals$fm[,4],
+                              B1 = formant_vals$bw[,1],
+                              B2 = formant_vals$bw[,2],
+                              B3 = formant_vals$bw[,3],
+                              B4 = formant_vals$bw[,4],
+                              H1u = numeric(nrow(formant_vals$fm)),
+                              H2u = numeric(nrow(formant_vals$fm)),
+                              H4u = numeric(nrow(formant_vals$fm)),
+                              A1u = numeric(nrow(formant_vals$fm)),
+                              A2u = numeric(nrow(formant_vals$fm)),
+                              A3u = numeric(nrow(formant_vals$fm)),
+                              H1c = numeric(nrow(formant_vals$fm)),
+                              H2c = numeric(nrow(formant_vals$fm)),
+                              H4c = numeric(nrow(formant_vals$fm)),
+                              A1c = numeric(nrow(formant_vals$fm)),
+                              A2c = numeric(nrow(formant_vals$fm)),
+                              A3c = numeric(nrow(formant_vals$fm)),
                               twoK = numeric(nrow(formant_vals$fm)),
                               fiveK = numeric(nrow(formant_vals$fm))
                               )
@@ -95,25 +104,57 @@ voice_gravy <- function(wav_path,
   # loop through rows and fill up result_tbl
   # with missing vals
   for(i in 1:nrow(result_tbl)){
-    # just an example of filtering the freqs in spectral_vals$dft
-    # based on a range around a formant value
-    cur_f2 = result_tbl$F2[i]
-    cur_f2_lower_limit = result_tbl$F2[i] - 0.25 * result_tbl$F2[i]
-    cur_f2_upper_limit = result_tbl$F2[i] + 0.25 * result_tbl$F2[i]
 
-    # use freqs_vec to get indices of columns to extract
-    col_indices = which(freqs_vec >= cur_f2_lower_limit & freqs_vec <= cur_f2_upper_limit)
+	# if F0 (and/or formants are undefined
+	# better way to assign to multiple vars?
+	#if all(result_tbl[i, c("F0", "F1", "F2") == 0]){
+	if (result_tbl$F0[i] == 0){
+		# JK: make NA or 0? NA maybe better b/c spectral differences can be less than/equal to zero
+		result_tbl[i, 10:23] <- NA
+	} else {
 
-    cur_spectral_vals = spectral_vals$dft[i, col_indices]
+		# search around frequency estimate in steps of df (in Hz)
+		# VS and PS use df = 0.1 but also have finer spectral resolution
+		df = 0.15
+		
+		# need to do this over and over so should wrap in a function
+		h1_lower_limit = result_tbl$F0[i] - df * result_tbl$F0[i]
+		h1_upper_limit = result_tbl$F0[i] + df * result_tbl$F0[i]
+		h2_lower_limit = (2 * result_tbl$F0[i]) - df * (2 * result_tbl$F0[i])
+		h2_upper_limit = (2 * result_tbl$F0[i]) + df * (2 * result_tbl$F0[i])
+		h4_lower_limit = (4 * result_tbl$F0[i]) - df * (4 * result_tbl$F0[i])
+		h4_upper_limit = (4 * result_tbl$F0[i]) + df * (4 * result_tbl$F0[i])
+		
+	    # use freqs_vec to get indices of columns to extract
+    	h1_col_indices = which(freqs_vec >= h1_lower_limit & freqs_vec <= h1_upper_limit)
+    	h2_col_indices = which(freqs_vec >= h2_lower_limit & freqs_vec <= h2_upper_limit)
+    	h4_col_indices = which(freqs_vec >= h4_lower_limit & freqs_vec <= h4_upper_limit)
 
-    ####################################
-    # TODO do computational magic here
-    # and add to result_tbl in correct field
-    # ala:
+	    h1_spectral_vals = spectral_vals$dft[i, h1_col_indices]
+	    h2_spectral_vals = spectral_vals$dft[i, h2_col_indices]
+	    h4_spectral_vals = spectral_vals$dft[i, h4_col_indices]
 
-    # somehow calc val and add to field:
-    H1 = max(cur_spectral_vals) # this is obviously BS!
-    result_tbl[1,]$H1 = H1
+		# could get frequencies too and do some kind of idiot check
+	    h1_spectral_freqs = freqs_vec[h1_col_indices]
+	    h2_spectral_freqs = freqs_vec[h2_col_indices]
+	    h4_spectral_freqs = freqs_vec[h4_col_indices]
+
+		h1db = max(h1_spectral_vals)
+		h2db = max(h2_spectral_vals)
+		h4db = max(h4_spectral_vals)
+
+		# frequencies
+		h1hz = h1_spectral_freqs[which.max(h1_spectral_vals)]
+		h2hz = h2_spectral_freqs[which.max(h2_spectral_vals)]
+		h4hz = h4_spectral_freqs[which.max(h4_spectral_vals)]
+
+   	 	####################################
+	    # Update results
+
+		result_tbl[i,]$H1u = h1db
+		result_tbl[i,]$H2u = h2db
+		result_tbl[i,]$H4u = h4db
+	}
 
   }
 
