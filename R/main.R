@@ -54,14 +54,17 @@ voice_gravy <- function(wav_path,
 
   f0_vals <- wrassp::ksvF0(wav_path, toFile = F)
   formant_vals <- wrassp::forest(wav_path, toFile = F)
-  # JPK: option to include Praat formants/bandwidths?
   spectral_vals <- wrassp::dftSpectrum(wav_path, toFile = F)
+  css_vals = wrassp::cssSpectrum(wav_path, toFile = F)
 
   # check if all have the same sample rate and start time
-  if(!identical(attr(f0_vals, "sampleRate"), attr(formant_vals, "sampleRate"),attr(spectral_vals, "sampleRate")) ||
-     !identical(attr(f0_vals, "startTime"), attr(formant_vals, "startTime"),attr(spectral_vals, "startTime"))){
-    stop("sampleRate or startTime returned by ksvF0, forest and dftSpectrum are not identical!")
+  if(!identical(attr(f0_vals, "sampleRate"), attr(formant_vals, "sampleRate"),attr(spectral_vals, "sampleRate"),attr(css_vals, "sampleRate")) ||
+     !identical(attr(f0_vals, "startTime"), attr(formant_vals, "startTime"),attr(spectral_vals, "startTime"),attr(css_vals, "startTime"))){
+    stop("sampleRate or startTime returned by ksvF0, forest, dftSpectrum, and cssSpectrum are not identical!")
   }
+
+  # for cepstral alanysis: quefrencies below 1ms are ignored (Hillenbrand et al., 1994)
+  N_ms = round(attr(f0_vals, "origFreq") / 1000)
 
   # calculate frame time vector
   frame_time = seq(attr(f0_vals, "startTime"),
@@ -74,7 +77,6 @@ voice_gravy <- function(wav_path,
   # as we know the size of the resulting object
   # we can pre-allocate it and then fill it up
   # (expand as needed)
-  # JK: add Hawks & Miller bandwidth option eventually?
   result_tbl = tibble::tibble(frame_time = frame_time,
                               F0 = f0_vals$F0[,1],
                               F1 = formant_vals$fm[,1],
@@ -98,7 +100,8 @@ voice_gravy <- function(wav_path,
                               A2c = numeric(nrow(formant_vals$fm)),
                               A3c = numeric(nrow(formant_vals$fm)),
                               twoK = numeric(nrow(formant_vals$fm)),
-                              fiveK = numeric(nrow(formant_vals$fm))
+                              fiveK = numeric(nrow(formant_vals$fm)),
+                              CPP = numeric(nrow(formant_vals$fm))
                               )
 
   # loop through rows and fill up result_tbl
@@ -109,51 +112,24 @@ voice_gravy <- function(wav_path,
 	# better way to assign to multiple vars?
 	#if all(result_tbl[i, c("F0", "F1", "F2") == 0]){
 	if (result_tbl$F0[i] == 0){
-		# JK: make NA or 0? NA maybe better b/c spectral differences can be less than/equal to zero
+		# JPK: make NA or 0? NA maybe better b/c spectral differences can be less than/equal to zero
+		# brittle: need to change if number of values computed changes
 		result_tbl[i, 10:23] <- NA
 	} else {
 
-		# search around frequency estimate in steps of df (in Hz)
-		# VS and PS use df = 0.1 but also have finer spectral resolution
-		df = 0.15
-		
-		# need to do this over and over so should wrap in a function
-		h1_lower_limit = result_tbl$F0[i] - df * result_tbl$F0[i]
-		h1_upper_limit = result_tbl$F0[i] + df * result_tbl$F0[i]
-		h2_lower_limit = (2 * result_tbl$F0[i]) - df * (2 * result_tbl$F0[i])
-		h2_upper_limit = (2 * result_tbl$F0[i]) + df * (2 * result_tbl$F0[i])
-		h4_lower_limit = (4 * result_tbl$F0[i]) - df * (4 * result_tbl$F0[i])
-		h4_upper_limit = (4 * result_tbl$F0[i]) + df * (4 * result_tbl$F0[i])
-		
-	    # use freqs_vec to get indices of columns to extract
-    	h1_col_indices = which(freqs_vec >= h1_lower_limit & freqs_vec <= h1_upper_limit)
-    	h2_col_indices = which(freqs_vec >= h2_lower_limit & freqs_vec <= h2_upper_limit)
-    	h4_col_indices = which(freqs_vec >= h4_lower_limit & freqs_vec <= h4_upper_limit)
+		h1 = get_harmonics(i, result_tbl$F0[i]) 
+		h2 = get_harmonics(i, 2*result_tbl$F0[i]) 
+		h4 = get_harmonics(i, 4*result_tbl$F0[i]) 
 
-	    h1_spectral_vals = spectral_vals$dft[i, h1_col_indices]
-	    h2_spectral_vals = spectral_vals$dft[i, h2_col_indices]
-	    h4_spectral_vals = spectral_vals$dft[i, h4_col_indices]
-
-		# could get frequencies too and do some kind of idiot check
-	    h1_spectral_freqs = freqs_vec[h1_col_indices]
-	    h2_spectral_freqs = freqs_vec[h2_col_indices]
-	    h4_spectral_freqs = freqs_vec[h4_col_indices]
-
-		h1db = max(h1_spectral_vals)
-		h2db = max(h2_spectral_vals)
-		h4db = max(h4_spectral_vals)
-
-		# frequencies
-		h1hz = h1_spectral_freqs[which.max(h1_spectral_vals)]
-		h2hz = h2_spectral_freqs[which.max(h2_spectral_vals)]
-		h4hz = h4_spectral_freqs[which.max(h4_spectral_vals)]
+		CPP = get_CPP(i)
 
    	 	####################################
 	    # Update results
 
-		result_tbl[i,]$H1u = h1db
-		result_tbl[i,]$H2u = h2db
-		result_tbl[i,]$H4u = h4db
+		result_tbl[i,]$H1u = h1
+		result_tbl[i,]$H2u = h2
+		result_tbl[i,]$H4u = h4
+		result_tbl[i,]$CPP = CPP
 	}
 
   }
@@ -172,6 +148,52 @@ voice_gravy <- function(wav_path,
   return(res)
 
 }
+
+get_harmonics <- function (i, f_est){
+  # find harmonic magnitudes in dB of time signal x around a frequency estimate f_est
+  # df_range, optional, default +-df% of f_est
+  # VS and PS use df = 0.1 but also have finer spectral resolution
+
+  # search around frequency estimate in steps of df (in Hz)
+  df = 0.15
+  # search range (in Hz)
+  df_range = round(f_est*df)
+
+  f_min = f_est - df_range
+  f_max = f_est + df_range
+
+  # use freqs_vec to get indices of columns to extract
+  col_indices = which(freqs_vec >= f_min & freqs_vec <= f_max)  
+  spectral_vals = spectral_vals$dft[i, col_indices]
+  # could get freqs too
+  #spectral_freqs = freqs_vec[col_indices]
+  #f = spectral_freqs[which.max(spectral_vals)]
+  h = max(spectral_vals)
+  return(h)
+
+}
+
+get_CPP <- function (i){
+
+  # quefrency below 1ms are ignored as per Hillenbrand
+  N_ms = round(attr(css_vals, "origFreq") / 1000)
+  # this is a Hz value - want the *index* of freqs_vec whose value is greater than this
+  my_range = which(freqs_vec >= N_ms)
+
+  # there are several ways to do this - question is, how to constrain quefrency range:
+  # between 1 ms and ... ? or between quefruency range corresponding to some reasonable F0 range?
+  # first pass, we'll do it the dumb way, compare w/VS
+  vals = css_vals$css[i, my_range]
+  	
+  # for doing the regression, does it matter if the independent variable is samples or ms? can't see why...
+  basefit <- lm(vals ~ c(1:length(vals)))
+  # find peak
+  p = max(vals)
+  #base_val = predict(basefit)[which(vals == max(vals))]
+  base_val = (p * basefit$coefficients[2]) + basefit$coefficients[1]
+  return(p - base_val)
+}
+
 
 # TODO
 convert_resultToAsspDataObj <- function (tbl,
