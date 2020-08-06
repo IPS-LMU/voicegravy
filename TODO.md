@@ -1,0 +1,2 @@
+- Hawks and Miller bandwidth option
+- Integrate Praat formant estimation and option to use these estimates for determining spectral amplitudes
